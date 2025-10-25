@@ -28,7 +28,7 @@ pub fn spawn(
                 stride,
                 frame.metadata.clone(),
             );
-            if let Some(path) = output_path.as_ref().cloned() {
+            if let Some(path) = output_path.as_ref().as_ref() {
                 fs::write(path, encoded.buffer.data())
                     .await
                     .map_err(|err| PipelineError::Io(err.to_string()))?;

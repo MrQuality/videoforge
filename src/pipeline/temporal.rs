@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use tokio::{sync::Mutex, task::JoinHandle};
 
-use crate::{FramePayload, PipelineError};
+use crate::PipelineError;
 
 use super::{StageReceiver, StageSender, spawn_stage};
 use crate::arc::telemetry::TelemetrySink;

@@ -75,7 +75,7 @@ pub struct ArcPolicy {
     pub max_frame_compute_ms: f32,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
 struct PolicyDocument {
     pub limits: PolicyLimits,
     pub defaults: RuntimeDefaults,

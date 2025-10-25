@@ -2,7 +2,7 @@
 
 use tokio::task::JoinHandle;
 
-use crate::{FramePayload, PipelineError, config::PolicyLimits};
+use crate::{PipelineError, config::PolicyLimits};
 
 use super::{StageReceiver, StageSender, spawn_stage};
 use crate::arc::telemetry::TelemetrySink;

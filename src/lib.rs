@@ -10,7 +10,6 @@ pub mod pipeline;
 
 use std::{fmt::Display, sync::Arc};
 
-use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::instrument;
 
@@ -18,8 +17,7 @@ use tracing::instrument;
 pub type SharedBytes = Arc<[u8]>;
 
 /// Enumeration covering the supported frame buffer memory locations.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FrameBuffer {
     /// CPU resident planar or packed pixel buffer.
     Cpu {
@@ -61,7 +59,7 @@ impl FrameBuffer {
 }
 
 /// Metadata describing a single frame travelling through the pipeline.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FrameMetadata {
     pub clip_id: String,
     pub frame_index: u64,
@@ -98,7 +96,7 @@ impl FrameMetadata {
 }
 
 /// Payload travelling across the video pipeline.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FramePayload {
     pub buffer: FrameBuffer,
     pub metadata: FrameMetadata,
@@ -153,6 +151,14 @@ pub enum PipelineError {
     PolicyViolation(String),
     #[error("configuration error: {0}")]
     Config(String),
+    #[error("task join failure: {0}")]
+    Join(String),
+}
+
+impl From<tokio::task::JoinError> for PipelineError {
+    fn from(err: tokio::task::JoinError) -> Self {
+        Self::Join(err.to_string())
+    }
 }
 
 /// Result alias for frame processing stages.

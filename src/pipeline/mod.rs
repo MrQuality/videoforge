@@ -142,11 +142,11 @@ pub async fn execute_pipeline(
         }
     }
 
-    decode_handle.await??;
-    mask_handle.await??;
-    inpaint_handle.await??;
-    temporal_handle.await??;
-    encode_handle.await??;
+    decode_handle.await.map_err(PipelineError::from)??;
+    mask_handle.await.map_err(PipelineError::from)??;
+    inpaint_handle.await.map_err(PipelineError::from)??;
+    temporal_handle.await.map_err(PipelineError::from)??;
+    encode_handle.await.map_err(PipelineError::from)??;
 
     Ok(())
 }

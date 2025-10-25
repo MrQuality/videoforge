@@ -2,7 +2,7 @@
 
 use tokio::task::JoinHandle;
 
-use crate::{FrameBuffer, FramePayload, PipelineError};
+use crate::{FramePayload, PipelineError};
 
 use super::{StageReceiver, StageSender, spawn_stage};
 use crate::arc::telemetry::TelemetrySink;
