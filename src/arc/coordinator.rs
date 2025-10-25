@@ -39,8 +39,8 @@ impl ArcCoordinator {
             telemetry,
             policy_limits,
             arc_policy,
-            estimator: ResourceEstimator::default(),
-            actuator: Arc::new(NullActuator::default()),
+            estimator: ResourceEstimator,
+            actuator: Arc::new(NullActuator),
         }
     }
 

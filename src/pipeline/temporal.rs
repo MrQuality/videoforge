@@ -22,13 +22,13 @@ pub fn spawn(
         async move {
             telemetry.record_stage("temporal", &frame);
             let mut guard = state.lock().await;
-            if let Some(prev) = *guard {
-                if frame.metadata.timestamp_ms < prev {
-                    return Err(PipelineError::Temporal(format!(
-                        "timestamp regression: {} -> {}",
-                        prev, frame.metadata.timestamp_ms
-                    )));
-                }
+            if let Some(prev) = *guard
+                && frame.metadata.timestamp_ms < prev
+            {
+                return Err(PipelineError::Temporal(format!(
+                    "timestamp regression: {} -> {}",
+                    prev, frame.metadata.timestamp_ms
+                )));
             }
             *guard = Some(frame.metadata.timestamp_ms);
             Ok(frame)

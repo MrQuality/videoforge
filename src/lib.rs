@@ -45,6 +45,11 @@ impl FrameBuffer {
         }
     }
 
+    /// Returns true when the mirrored buffer has no bytes.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Indicates whether the buffer is resident on a GPU device.
     pub fn is_gpu(&self) -> bool {
         matches!(self, FrameBuffer::Gpu { .. })

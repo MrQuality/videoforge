@@ -101,11 +101,7 @@ pub struct ModelRecord {
 impl ModelRegistry {
     pub fn validate(&self) -> Result<(), PipelineError> {
         for model in &self.models {
-            if model.checksum.len() != 64
-                || !model
-                    .checksum
-                    .chars()
-                    .all(|c| matches!(c, '0'..='9' | 'a'..='f' | 'A'..='F'))
+            if model.checksum.len() != 64 || !model.checksum.chars().all(|c| c.is_ascii_hexdigit())
             {
                 return Err(PipelineError::Config(format!(
                     "invalid checksum for model {}:{}",
