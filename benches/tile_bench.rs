@@ -1,8 +1,8 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 
 fn tile_count(width: u32, height: u32, tile: u32) -> u32 {
-    let tiles_x = (width + tile - 1) / tile;
-    let tiles_y = (height + tile - 1) / tile;
+    let tiles_x = width.div_ceil(tile);
+    let tiles_y = height.div_ceil(tile);
     tiles_x * tiles_y
 }
 

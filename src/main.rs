@@ -13,10 +13,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = videoforge::config::CliArgs::parse();
     let config = videoforge::config::AppConfig::load(cli.clone()).await?;
 
-    if let Err(error) = videoforge::run(config).await {
+    videoforge::run(config).await.map_err(|error| {
         tracing::error!(error = %error, "pipeline execution failed");
-        return Err(Box::new(error));
-    }
-
-    Ok(())
+        Box::<dyn std::error::Error>::from(error)
+    })
 }

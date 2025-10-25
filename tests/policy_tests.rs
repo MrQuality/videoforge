@@ -24,7 +24,7 @@ fn policy_allows_under_limits() {
         max_gpu_bandwidth_mb: 500.0,
         max_frame_compute_ms: 50.0,
     };
-    let estimator = ResourceEstimator::default();
+    let estimator = ResourceEstimator;
     let estimate = estimator.estimate(&metadata());
     let decision = policy::evaluate(&arc_policy, &estimate, 0);
     assert!(decision.allowed);
@@ -37,7 +37,7 @@ fn policy_blocks_concurrency_overflow() {
         max_gpu_bandwidth_mb: 500.0,
         max_frame_compute_ms: 50.0,
     };
-    let estimator = ResourceEstimator::default();
+    let estimator = ResourceEstimator;
     let estimate = estimator.estimate(&metadata());
     let decision = policy::evaluate(&arc_policy, &estimate, 1);
     assert!(!decision.allowed);
