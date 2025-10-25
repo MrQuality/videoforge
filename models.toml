@@ -1,0 +1,11 @@
+[[models]]
+name = "masknet"
+version = "1.0.0"
+path = "models/masknet.onnx"
+checksum_sha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+[[models]]
+name = "inpaint-large"
+version = "2.1.0"
+path = "models/inpaint-large.onnx"
+checksum_sha256 = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
