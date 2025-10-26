@@ -6,7 +6,7 @@ use ffmpeg::decoder::video::Video as VideoDecoder;
 use ffmpeg::software::scaling::{context::Context as Scaler, flag::Flags};
 use ffmpeg::util::{format::pixel::Pixel, frame::video::Video};
 use ffmpeg_next as ffmpeg;
-use tokio::task::JoinHandle;
+use tokio::{runtime::Handle, task::JoinHandle};
 use tracing::instrument;
 
 use crate::{
@@ -24,7 +24,8 @@ pub fn spawn(
     coordinator: ArcCoordinator,
     output: StageSender,
 ) -> JoinHandle<Result<(), PipelineError>> {
-    tokio::spawn(async move { run_decode(runtime, decoder, coordinator, output).await })
+    let handle = Handle::current();
+    tokio::task::spawn_blocking(move || run_decode(handle, runtime, decoder, coordinator, output))
 }
 
 /// Core decode loop responsible for translating packets into frame payloads.
@@ -32,7 +33,8 @@ pub fn spawn(
     skip_all,
     fields(clip = %runtime.clip_id, codec = %decoder_config.video_codec)
 )]
-async fn run_decode(
+fn run_decode(
+    handle: Handle,
     runtime: RuntimeConfig,
     decoder_config: DecoderConfig,
     coordinator: ArcCoordinator,
@@ -65,7 +67,7 @@ async fn run_decode(
         )));
     }
 
-    let mut decoder_ctx = ffmpeg::codec::context::Context::from_parameters(parameters)
+    let decoder_ctx = ffmpeg::codec::context::Context::from_parameters(parameters)
         .map_err(|err| PipelineError::Decode(format!("codec context: {err}")))?;
     let mut ff_decoder = decoder_ctx
         .decoder()
@@ -105,6 +107,7 @@ async fn run_decode(
         match drain_decoder(
             &mut ff_decoder,
             &mut scaler,
+            &handle,
             &runtime,
             &decoder_config,
             &coordinator,
@@ -113,19 +116,13 @@ async fn run_decode(
             &mut converted,
             &mut produced_frames,
             frame_limit,
-        )
-        .await?
-        {
+        )? {
             DrainOutcome::NeedsMoreInput => {}
             DrainOutcome::FrameLimitReached => break 'packets,
             DrainOutcome::EndOfStream => {
                 reached_end_of_stream = true;
                 break 'packets;
             }
-        }
-
-        if produced_frames >= frame_limit {
-            break;
         }
     }
 
@@ -138,6 +135,7 @@ async fn run_decode(
             match drain_decoder(
                 &mut ff_decoder,
                 &mut scaler,
+                &handle,
                 &runtime,
                 &decoder_config,
                 &coordinator,
@@ -146,16 +144,10 @@ async fn run_decode(
                 &mut converted,
                 &mut produced_frames,
                 frame_limit,
-            )
-            .await?
-            {
+            )? {
                 DrainOutcome::NeedsMoreInput => break,
                 DrainOutcome::FrameLimitReached => break,
                 DrainOutcome::EndOfStream => break,
-            }
-
-            if produced_frames >= frame_limit {
-                break;
             }
         }
     }
@@ -175,9 +167,10 @@ enum DrainOutcome {
 }
 
 /// Pulls ready frames from the decoder and forwards them downstream.
-async fn drain_decoder(
+fn drain_decoder(
     decoder: &mut VideoDecoder,
     scaler: &mut Scaler,
+    handle: &Handle,
     runtime: &RuntimeConfig,
     decoder_config: &DecoderConfig,
     coordinator: &ArcCoordinator,
@@ -193,16 +186,18 @@ async fn drain_decoder(
                 let converted_frame = convert_frame(scaler, decoded, converted)?;
                 let metadata = build_metadata(runtime, *produced_frames, &converted_frame);
                 coordinator.ensure_runtime_compliance(&metadata)?;
-                let permit = coordinator.acquire(&metadata).await?;
+                let permit = handle.block_on(coordinator.acquire(&metadata))?;
                 let payload = make_payload(decoder_config.hardware, converted_frame, metadata);
                 coordinator.record_stage("decode", &payload);
-                output.send(Ok(payload)).await.map_err(|err| {
+                output.blocking_send(Ok(payload)).map_err(|err| {
                     PipelineError::Decode(format!("downstream closed decode channel: {err}"))
                 })?;
                 drop(permit);
                 *produced_frames += 1;
             }
-            Err(ffmpeg::Error::Again) => return Ok(DrainOutcome::NeedsMoreInput),
+            Err(ffmpeg::Error::Other { errno }) if errno == ffmpeg::util::error::EAGAIN => {
+                return Ok(DrainOutcome::NeedsMoreInput);
+            }
             Err(ffmpeg::Error::Eof) => return Ok(DrainOutcome::EndOfStream),
             Err(err) => {
                 return Err(PipelineError::Decode(format!("receive frame: {err}")));
