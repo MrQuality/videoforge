@@ -13,7 +13,7 @@ cli = []
 cuda = ["dep:cust"]
 ffmpeg = ["dep:ffmpeg-next"]
 inference = ["dep:onnxruntime"]
-inference-downloads = ["inference", "onnxruntime/download"]
+inference-downloads = ["inference", "onnxruntime/download-binaries"]
 
 [dependencies]
 async-trait = "0.1"
