@@ -18,3 +18,7 @@ channel_capacity = 8
 max_concurrent_jobs = 2
 max_gpu_bandwidth_mb = 350.0
 max_frame_compute_ms = 28.0
+
+[decoder]
+video_codec = "h264"
+hardware = "cpu"
