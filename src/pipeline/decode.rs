@@ -92,7 +92,14 @@ fn run_decode(
 
     let mut decoded = Video::empty();
     let mut converted = Video::empty();
-    let mut produced_frames: u64 = 0;
+    let mut state = DrainState::new(frame_limit);
+    let env = DrainEnv {
+        handle: &handle,
+        runtime: &runtime,
+        decoder: &decoder_config,
+        coordinator: &coordinator,
+        output: &output,
+    };
     let mut reached_end_of_stream = false;
 
     'packets: for (stream, packet) in context.packets() {
@@ -107,15 +114,10 @@ fn run_decode(
         match drain_decoder(
             &mut ff_decoder,
             &mut scaler,
-            &handle,
-            &runtime,
-            &decoder_config,
-            &coordinator,
-            &output,
+            &env,
+            &mut state,
             &mut decoded,
             &mut converted,
-            &mut produced_frames,
-            frame_limit,
         )? {
             DrainOutcome::NeedsMoreInput => {}
             DrainOutcome::FrameLimitReached => break 'packets,
@@ -126,29 +128,22 @@ fn run_decode(
         }
     }
 
-    if !reached_end_of_stream && produced_frames < frame_limit {
+    if !reached_end_of_stream && state.has_remaining_budget() {
         ff_decoder
             .send_eof()
             .map_err(|err| PipelineError::Decode(format!("send eof: {err}")))?;
 
-        loop {
-            match drain_decoder(
-                &mut ff_decoder,
-                &mut scaler,
-                &handle,
-                &runtime,
-                &decoder_config,
-                &coordinator,
-                &output,
-                &mut decoded,
-                &mut converted,
-                &mut produced_frames,
-                frame_limit,
-            )? {
-                DrainOutcome::NeedsMoreInput => break,
-                DrainOutcome::FrameLimitReached => break,
-                DrainOutcome::EndOfStream => break,
-            }
+        match drain_decoder(
+            &mut ff_decoder,
+            &mut scaler,
+            &env,
+            &mut state,
+            &mut decoded,
+            &mut converted,
+        )? {
+            DrainOutcome::NeedsMoreInput
+            | DrainOutcome::FrameLimitReached
+            | DrainOutcome::EndOfStream => {}
         }
     }
 
@@ -170,30 +165,26 @@ enum DrainOutcome {
 fn drain_decoder(
     decoder: &mut VideoDecoder,
     scaler: &mut Scaler,
-    handle: &Handle,
-    runtime: &RuntimeConfig,
-    decoder_config: &DecoderConfig,
-    coordinator: &ArcCoordinator,
-    output: &StageSender,
+    env: &DrainEnv<'_>,
+    state: &mut DrainState,
     decoded: &mut Video,
     converted: &mut Video,
-    produced_frames: &mut u64,
-    frame_limit: u64,
 ) -> Result<DrainOutcome, PipelineError> {
-    while *produced_frames < frame_limit {
+    while state.has_remaining_budget() {
         match decoder.receive_frame(decoded) {
             Ok(()) => {
                 let converted_frame = convert_frame(scaler, decoded, converted)?;
-                let metadata = build_metadata(runtime, *produced_frames, &converted_frame);
-                coordinator.ensure_runtime_compliance(&metadata)?;
-                let permit = handle.block_on(coordinator.acquire(&metadata))?;
-                let payload = make_payload(decoder_config.hardware, converted_frame, metadata);
-                coordinator.record_stage("decode", &payload);
-                output.blocking_send(Ok(payload)).map_err(|err| {
+                let metadata =
+                    build_metadata(env.runtime, state.produced_frames(), &converted_frame);
+                env.coordinator.ensure_runtime_compliance(&metadata)?;
+                let permit = env.handle.block_on(env.coordinator.acquire(&metadata))?;
+                let payload = make_payload(env.decoder.hardware, converted_frame, metadata);
+                env.coordinator.record_stage("decode", &payload);
+                env.output.blocking_send(Ok(payload)).map_err(|err| {
                     PipelineError::Decode(format!("downstream closed decode channel: {err}"))
                 })?;
                 drop(permit);
-                *produced_frames += 1;
+                state.record_frame();
             }
             Err(ffmpeg::Error::Other { errno }) if errno == ffmpeg::util::error::EAGAIN => {
                 return Ok(DrainOutcome::NeedsMoreInput);
@@ -206,6 +197,42 @@ fn drain_decoder(
     }
 
     Ok(DrainOutcome::FrameLimitReached)
+}
+
+/// Shared references used when draining the decoder.
+struct DrainEnv<'a> {
+    handle: &'a Handle,
+    runtime: &'a RuntimeConfig,
+    decoder: &'a DecoderConfig,
+    coordinator: &'a ArcCoordinator,
+    output: &'a StageSender,
+}
+
+/// Tracks decode progress against the configured frame limit.
+struct DrainState {
+    produced_frames: u64,
+    frame_limit: u64,
+}
+
+impl DrainState {
+    fn new(frame_limit: u64) -> Self {
+        Self {
+            produced_frames: 0,
+            frame_limit,
+        }
+    }
+
+    fn record_frame(&mut self) {
+        self.produced_frames = self.produced_frames.saturating_add(1);
+    }
+
+    fn produced_frames(&self) -> u64 {
+        self.produced_frames
+    }
+
+    fn has_remaining_budget(&self) -> bool {
+        self.produced_frames < self.frame_limit
+    }
 }
 
 /// CPU-resident buffer carrying RGB pixels extracted from FFmpeg.
@@ -231,12 +258,6 @@ fn convert_frame(
         .map_err(|err| PipelineError::Decode(format!("scale frame: {err}")))?;
 
     let stride = converted.stride(0);
-    if stride < 0 {
-        return Err(PipelineError::Decode(
-            "negative stride produced".to_string(),
-        ));
-    }
-    let stride = stride as usize;
     let height = converted.height() as usize;
     let plane = converted.data(0);
     let expected = stride * height;
@@ -251,8 +272,8 @@ fn convert_frame(
     Ok(ConvertedFrame {
         bytes,
         stride,
-        width: converted.width() as u32,
-        height: converted.height() as u32,
+        width: converted.width(),
+        height: converted.height(),
     })
 }
 
