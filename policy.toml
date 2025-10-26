@@ -1,0 +1,20 @@
+[limits]
+max_clip_seconds = 12
+max_frames_per_clip = 360
+max_width = 1920
+max_height = 1080
+max_frame_rate = 60
+
+[defaults]
+clip_seconds = 4
+width = 1280
+height = 720
+channels = 3
+frame_rate = 24
+dry_run_frames = 48
+channel_capacity = 8
+
+[arc]
+max_concurrent_jobs = 2
+max_gpu_bandwidth_mb = 350.0
+max_frame_compute_ms = 28.0
