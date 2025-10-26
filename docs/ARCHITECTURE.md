@@ -29,6 +29,14 @@ mutating them, ensuring that failure propagation is predictable.
 * **Encode** – Optionally persists frames to disk and hands results to the
   caller for aggregation.
 
+> **Inference runtime**
+>
+> The `inference` Cargo feature intentionally ships without a backend runtime
+> while we evaluate a patched ONNX Runtime release that is free from the
+> `time` crate advisory (RUSTSEC-2020-0071).  Integrations depending on ONNX
+> should add a workspace-local crate that re-enables the runtime once an
+> audited build is available.
+
 ## ARC Coordinator
 
 The ARC coordinator couples a telemetry sink, a lightweight resource estimator,
