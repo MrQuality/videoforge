@@ -6,8 +6,12 @@ use videoforge::{
     pipeline,
 };
 
-fn test_cli_args() -> CliArgs {
+#[path = "common/mod.rs"]
+mod common;
+
+fn test_cli_args(input: PathBuf) -> CliArgs {
     CliArgs {
+        input,
         policy: PathBuf::from("policy.toml"),
         models: PathBuf::from("models.toml"),
         output: None,
@@ -15,15 +19,18 @@ fn test_cli_args() -> CliArgs {
         clip_seconds: Some(2),
         width: None,
         height: None,
-        dry_run_frames: Some(4),
+        dry_run_frames: Some(1),
         channel_capacity: Some(4),
         confirm_rights: true,
+        video_codec: Some("png".to_string()),
+        hw_accel: None,
     }
 }
 
 #[tokio::test]
 async fn pipeline_completes_synthetic_frames() {
-    let cli = test_cli_args();
+    let (_clip_dir, clip_path) = common::write_sample_png().expect("clip fixture");
+    let cli = test_cli_args(clip_path);
     let config = AppConfig::load(cli.clone()).await.expect("config load");
     let telemetry = TelemetrySink::default();
     let coordinator = ArcCoordinator::new(

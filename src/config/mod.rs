@@ -2,17 +2,38 @@
 
 use std::path::PathBuf;
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use serde::Deserialize;
 use tokio::fs;
 use tracing::instrument;
 
 use crate::PipelineError;
 
+/// Hardware acceleration modes for the decoder.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Deserialize)]
+#[serde(rename_all = "lowercase")]
+#[clap(rename_all = "lowercase")]
+pub enum HardwareAcceleration {
+    /// Pure CPU decoding path.
+    Cpu,
+    /// CUDA GPU accelerated decode with zero-copy transfers.
+    Cuda,
+}
+
+impl HardwareAcceleration {
+    /// Returns true when the mode targets GPU execution.
+    pub fn is_gpu(self) -> bool {
+        matches!(self, Self::Cuda)
+    }
+}
+
 /// Command-line arguments used to bootstrap the runtime.
 #[derive(Parser, Debug, Clone)]
 #[command(author, version, about = "Videoforge video processing pipeline")]
 pub struct CliArgs {
+    /// Location of the input media clip.
+    #[arg(long, value_name = "PATH")]
+    pub input: PathBuf,
     /// Location of the policy document.
     #[arg(long, value_name = "PATH", default_value = "policy.toml")]
     pub policy: PathBuf,
@@ -43,6 +64,12 @@ pub struct CliArgs {
     /// Confirmation that content rights have been validated.
     #[arg(long, env = "VIDEOFORGE_CONFIRM_RIGHTS")]
     pub confirm_rights: bool,
+    /// Override the preferred video codec for decoding.
+    #[arg(long, value_name = "CODEC")]
+    pub video_codec: Option<String>,
+    /// Hardware acceleration mode for decoding.
+    #[arg(long, value_name = "MODE")]
+    pub hw_accel: Option<HardwareAcceleration>,
 }
 
 /// Limits enforced at runtime.
@@ -80,6 +107,14 @@ struct PolicyDocument {
     pub limits: PolicyLimits,
     pub defaults: RuntimeDefaults,
     pub arc: ArcPolicy,
+    pub decoder: DecoderPolicy,
+}
+
+/// Policy provided decoder defaults.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct DecoderPolicy {
+    pub video_codec: String,
+    pub hardware: HardwareAcceleration,
 }
 
 /// Registered model metadata.
@@ -152,11 +187,27 @@ pub struct AppConfig {
     pub models: ModelRegistry,
     pub runtime: RuntimeConfig,
     pub output_path: Option<PathBuf>,
+    pub decoder: DecoderConfig,
+}
+
+/// Fully merged decoder preferences.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DecoderConfig {
+    pub input: PathBuf,
+    pub video_codec: String,
+    pub hardware: HardwareAcceleration,
 }
 
 impl AppConfig {
     #[instrument(skip_all)]
     pub async fn load(cli: CliArgs) -> Result<Self, PipelineError> {
+        fs::metadata(&cli.input).await.map_err(|err| {
+            PipelineError::Config(format!(
+                "input media '{}' not accessible: {err}",
+                cli.input.display()
+            ))
+        })?;
+
         let policy_raw = fs::read_to_string(&cli.policy)
             .await
             .map_err(|err| PipelineError::Config(format!("failed to read policy: {err}")))?;
@@ -227,6 +278,15 @@ impl AppConfig {
             confirm_rights: cli.confirm_rights,
         };
 
+        let decoder = DecoderConfig {
+            input: cli.input.clone(),
+            video_codec: cli
+                .video_codec
+                .clone()
+                .unwrap_or(policy_doc.decoder.video_codec.clone()),
+            hardware: cli.hw_accel.unwrap_or(policy_doc.decoder.hardware),
+        };
+
         Ok(Self {
             output_path: cli.output.clone(),
             cli,
@@ -234,6 +294,7 @@ impl AppConfig {
             arc_policy: policy_doc.arc,
             models,
             runtime,
+            decoder,
         })
     }
 }

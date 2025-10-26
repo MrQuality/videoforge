@@ -2,8 +2,12 @@ use std::path::PathBuf;
 
 use videoforge::config::{AppConfig, CliArgs, ModelRecord, ModelRegistry};
 
-fn base_cli(confirm_rights: bool) -> CliArgs {
+#[path = "common/mod.rs"]
+mod common;
+
+fn base_cli(confirm_rights: bool, input: PathBuf) -> CliArgs {
     CliArgs {
+        input,
         policy: PathBuf::from("policy.toml"),
         models: PathBuf::from("models.toml"),
         output: None,
@@ -14,12 +18,15 @@ fn base_cli(confirm_rights: bool) -> CliArgs {
         dry_run_frames: None,
         channel_capacity: None,
         confirm_rights,
+        video_codec: None,
+        hw_accel: None,
     }
 }
 
 #[tokio::test]
 async fn config_loads_defaults_successfully() {
-    let cli = base_cli(true);
+    let (_clip_dir, clip_path) = common::write_sample_png().expect("clip fixture");
+    let cli = base_cli(true, clip_path);
     let config = AppConfig::load(cli).await.expect("load defaults");
     assert_eq!(config.runtime.width, 1280);
     assert_eq!(config.runtime.height, 720);
@@ -28,7 +35,8 @@ async fn config_loads_defaults_successfully() {
 
 #[tokio::test]
 async fn config_rejects_missing_rights_confirmation() {
-    let cli = base_cli(false);
+    let (_clip_dir, clip_path) = common::write_sample_png().expect("clip fixture");
+    let cli = base_cli(false, clip_path);
     let err = AppConfig::load(cli)
         .await
         .expect_err("missing rights should fail");

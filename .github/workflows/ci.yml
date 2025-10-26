@@ -15,6 +15,20 @@ jobs:
           toolchain: stable
           override: true
           components: rustfmt, clippy
+      - name: Install FFmpeg development libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ffmpeg \
+            libavcodec-dev \
+            libavdevice-dev \
+            libavfilter-dev \
+            libavformat-dev \
+            libavutil-dev \
+            libpostproc-dev \
+            libswresample-dev \
+            libswscale-dev \
+            pkg-config
       - uses: actions-rs/cargo@v1
         with:
           command: fmt
